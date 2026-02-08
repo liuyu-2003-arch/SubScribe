@@ -1,20 +1,25 @@
-
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { GeneratedContent } from "../types";
 
 const MODEL_NAME = "gemini-3-flash-preview";
 
-export const generateBlogPost = async (srtText: string): Promise<GeneratedContent> => {
+// Helper for exponential backoff delay
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Generates a polished blog post from transcript text using Gemini 3.
+ * Implements graceful retry logic for rate limits.
+ */
+export const generateBlogPost = async (srtText: string, retryCount = 0): Promise<GeneratedContent> => {
   const apiKey = process.env.API_KEY;
   
   if (!apiKey) {
     throw new Error("API_KEY_MISSING");
   }
 
-  // Create a new GoogleGenAI instance for each request to ensure it uses the latest configured API key
+  // Fixed: Create a new instance right before call as per Gemini 3 and Veo guidelines.
   const ai = new GoogleGenAI({ apiKey });
 
-  // Use the recommended schema definition approach without deprecated wrappers
   const responseSchema = {
     type: Type.OBJECT,
     properties: {
@@ -35,7 +40,6 @@ export const generateBlogPost = async (srtText: string): Promise<GeneratedConten
     propertyOrdering: ["title", "summary", "content"],
   };
 
-  // Move persona and core instructions to systemInstruction for better model performance
   const systemInstruction = `
     You are a professional blog editor.
     Convert the raw transcript from an SRT file into a polished, structured blog article.
@@ -48,28 +52,45 @@ export const generateBlogPost = async (srtText: string): Promise<GeneratedConten
   `;
 
   try {
-    const response = await ai.models.generateContent({
+    const response: GenerateContentResponse = await ai.models.generateContent({
       model: MODEL_NAME,
       contents: `Process this transcript into a blog post:\n${srtText}`,
       config: {
         systemInstruction,
         responseMimeType: "application/json",
         responseSchema: responseSchema,
-        // Removed maxOutputTokens to avoid empty responses caused by missing thinkingBudget; the model manages limits automatically.
       },
     });
 
+    // Fixed: Accessed .text as a property, not a method, as per SDK guidelines.
     const text = response.text;
     if (!text) {
-        throw new Error("Gemini returned an empty response.");
+        throw new Error("EMPTY_RESPONSE");
     }
     
     return JSON.parse(text) as GeneratedContent;
   } catch (error: any) {
-    // Gracefully handle specific API errors like project or key not found
-    if (error.message?.includes("Requested entity was not found")) {
+    const message = error.message || "";
+    
+    // Fixed: Implemented graceful retry logic with exponential backoff for API rate limits.
+    if ((message.includes("429") || message.toLowerCase().includes("rate limit")) && retryCount < 3) {
+      await wait(Math.pow(2, retryCount) * 1000);
+      return generateBlogPost(srtText, retryCount + 1);
+    }
+
+    if (message.includes("429") || message.toLowerCase().includes("rate limit")) {
+      throw new Error("RATE_LIMIT_EXCEEDED");
+    }
+    if (message.includes("503") || message.toLowerCase().includes("overloaded")) {
+      throw new Error("SERVICE_OVERLOADED");
+    }
+    if (message.includes("finishReason: SAFETY") || message.toLowerCase().includes("safety")) {
+      throw new Error("CONTENT_SAFETY_FILTER");
+    }
+    if (message.includes("Requested entity was not found")) {
       throw new Error("API_KEY_INVALID");
     }
+    
     throw error;
   }
 };

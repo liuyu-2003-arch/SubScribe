@@ -1,6 +1,5 @@
-
-import React, { useCallback, useState, useEffect } from 'react';
-import { UploadCloud, Loader2, AlertCircle, Key } from 'lucide-react';
+import React, { useCallback, useState } from 'react';
+import { UploadCloud, Loader2, AlertCircle, Key, RefreshCcw, ShieldAlert, FileWarning, ZapOff } from 'lucide-react';
 import { parseSrtToText } from '../utils/srt';
 import { generateBlogPost } from '../services/gemini';
 import { BlogPost } from '../types';
@@ -9,24 +8,93 @@ interface UploadAreaProps {
   onPostCreated: (post: BlogPost) => void;
 }
 
-declare global {
-  interface Window {
-    // Use the existing global AIStudio type to avoid conflicts and resolve modifier errors
-    aistudio: AIStudio;
-  }
+// Fixed: Removed conflicting 'declare global' for 'aistudio' to resolve TS 'identical modifiers' and 'subsequent property declarations' errors.
+// The environment already provides these types.
+
+interface AppError {
+  title: string;
+  message: string;
+  type: 'key' | 'usage' | 'validation' | 'service';
+  icon: React.ElementType;
 }
 
 const UploadArea: React.FC<UploadAreaProps> = ({ onPostCreated }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState<{ message: string; type?: 'key' } | null>(null);
+  const [error, setError] = useState<AppError | null>(null);
+
+  const getFriendlyError = (err: any): AppError => {
+    const msg = err.message || "";
+    
+    // Fixed: Added check for "Requested entity was not found" as per API Key Selection guidelines.
+    if (msg === 'API_KEY_MISSING' || msg === 'API_KEY_INVALID' || msg.includes("API Key must be set") || msg.includes("Requested entity was not found")) {
+      return {
+        title: "API Key Required",
+        message: "A valid API Key from a paid Google Cloud project is required to use the Gemini 3 models.",
+        type: 'key',
+        icon: Key
+      };
+    }
+    
+    if (msg === 'RATE_LIMIT_EXCEEDED') {
+      return {
+        title: "Rate Limit Exceeded",
+        message: "You've sent too many requests in a short period. Please wait a minute before trying again.",
+        type: 'usage',
+        icon: RefreshCcw
+      };
+    }
+
+    if (msg === 'SERVICE_OVERLOADED') {
+      return {
+        title: "Service Overloaded",
+        message: "The AI service is currently experiencing high demand. Please try again in a few moments.",
+        type: 'service',
+        icon: ZapOff
+      };
+    }
+
+    if (msg === 'CONTENT_SAFETY_FILTER') {
+      return {
+        title: "Content Blocked",
+        message: "The AI safety filters were triggered by this content. Try a different transcript.",
+        type: 'validation',
+        icon: ShieldAlert
+      };
+    }
+
+    if (msg === 'SRT_TOO_SHORT') {
+      return {
+        title: "Transcript Too Short",
+        message: "This SRT file doesn't contain enough text content to generate a meaningful blog post.",
+        type: 'validation',
+        icon: FileWarning
+      };
+    }
+
+    if (msg === 'EMPTY_FILE') {
+      return {
+        title: "Empty File",
+        message: "The uploaded file is empty. Please check your SRT file and try again.",
+        type: 'validation',
+        icon: FileWarning
+      };
+    }
+
+    return {
+      title: "Processing Failed",
+      message: msg || "An unexpected error occurred while transforming your subtitles.",
+      type: 'validation',
+      icon: AlertCircle
+    };
+  };
 
   const handleOpenKeySelector = async () => {
     try {
-      if (window.aistudio) {
-        await window.aistudio.openSelectKey();
+      const aistudio = (window as any).aistudio;
+      if (aistudio) {
+        await aistudio.openSelectKey();
         setError(null);
-        // Assuming success after triggering the dialog to proceed smoothly as per guidelines
       }
     } catch (err) {
       console.error("Failed to open key selector", err);
@@ -35,19 +103,44 @@ const UploadArea: React.FC<UploadAreaProps> = ({ onPostCreated }) => {
 
   const processFile = async (file: File) => {
     if (!file.name.toLowerCase().endsWith('.srt')) {
-      setError({ message: "Please upload a valid .srt file." });
+      setError({
+        title: "Invalid File Type",
+        message: "Only .srt files are supported at this time.",
+        type: 'validation',
+        icon: FileWarning
+      });
+      return;
+    }
+
+    if (file.size === 0) {
+      setError(getFriendlyError(new Error('EMPTY_FILE')));
       return;
     }
 
     setError(null);
+
+    // Fixed: Added mandatory API key selection check before using Gemini 3 series models.
+    const aistudio = (window as any).aistudio;
+    if (aistudio) {
+      const hasKey = await aistudio.hasSelectedApiKey();
+      if (!hasKey) {
+        await handleOpenKeySelector();
+        // Fixed: Mitigate race condition by proceeding immediately after triggering openSelectKey.
+      }
+    }
+
     setIsProcessing(true);
 
     try {
       const textContent = await file.text();
       const parsedText = parseSrtToText(textContent);
       
+      if (!parsedText || parsedText.trim().length === 0) {
+        throw new Error("EMPTY_FILE");
+      }
+      
       if (parsedText.length < 50) {
-        throw new Error("SRT content is too short to generate a blog post.");
+        throw new Error("SRT_TOO_SHORT");
       }
 
       const generated = await generateBlogPost(parsedText);
@@ -64,16 +157,7 @@ const UploadArea: React.FC<UploadAreaProps> = ({ onPostCreated }) => {
 
       onPostCreated(newPost);
     } catch (err: any) {
-      console.error("Processing error:", err);
-      // Catch key-related errors from SDK or our own service logic
-      if (err.message === 'API_KEY_MISSING' || err.message === 'API_KEY_INVALID' || err.message?.includes("API Key must be set")) {
-        setError({ 
-          message: "API Key is missing or invalid in the browser environment. Please select a valid key from a paid project.", 
-          type: 'key' 
-        });
-      } else {
-        setError({ message: err.message || "Failed to process the file." });
-      }
+      setError(getFriendlyError(err));
     } finally {
       setIsProcessing(false);
     }
@@ -151,16 +235,28 @@ const UploadArea: React.FC<UploadAreaProps> = ({ onPostCreated }) => {
       </div>
 
       {error && (
-        <div className={`mt-6 p-5 border rounded-2xl flex flex-col gap-4 animate-fadeIn ring-4 ${error.type === 'key' ? 'bg-amber-50 border-amber-100 ring-amber-50/50 text-amber-900' : 'bg-red-50 border-red-100 ring-red-50/50 text-red-600'}`}>
+        <div className={`mt-6 p-5 border rounded-2xl flex flex-col gap-4 animate-fadeIn ring-4 
+          ${error.type === 'key' ? 'bg-amber-50 border-amber-100 ring-amber-50/50 text-amber-900' : 
+            error.type === 'usage' ? 'bg-blue-50 border-blue-100 ring-blue-50/50 text-blue-900' :
+            error.type === 'service' ? 'bg-purple-50 border-purple-100 ring-purple-50/50 text-purple-900' :
+            'bg-red-50 border-red-100 ring-red-50/50 text-red-600'}`}>
+          
           <div className="flex items-start gap-4">
-            {error.type === 'key' ? <Key className="w-6 h-6 flex-shrink-0" /> : <AlertCircle className="w-6 h-6 flex-shrink-0" />}
+            <div className={`p-2 rounded-xl ${
+              error.type === 'key' ? 'bg-amber-100' : 
+              error.type === 'usage' ? 'bg-blue-100' : 
+              error.type === 'service' ? 'bg-purple-100' : 
+              'bg-red-100'
+            }`}>
+              <error.icon className="w-5 h-5 flex-shrink-0" />
+            </div>
             <div className="space-y-1">
-               <p className="text-sm font-black uppercase tracking-tight">{error.type === 'key' ? 'Configuration Required' : 'Processing Error'}</p>
+               <p className="text-sm font-black uppercase tracking-tight">{error.title}</p>
                <p className="text-sm font-medium leading-relaxed opacity-80">{error.message}</p>
             </div>
           </div>
           
-          {error.type === 'key' && window.aistudio && (
+          {error.type === 'key' && (window as any).aistudio && (
             <button
               onClick={handleOpenKeySelector}
               className="w-full py-3 bg-amber-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-amber-200 hover:bg-amber-700 transition-all flex items-center justify-center gap-2"
