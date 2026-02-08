@@ -1,0 +1,5 @@
+{
+  "name": "SRT to Blog Converter",
+  "description": "Automatically convert SRT subtitle files into structured, readable blog posts using Gemini API. Features typo correction, semantic paragraphing, and auto-summarization.",
+  "requestFramePermissions": []
+}
