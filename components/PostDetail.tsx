@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BlogPost } from '../types';
-import { ArrowLeft, Download, FileCode, Clock, BookOpen, FileText, Sparkles, Share2 } from 'lucide-react';
+import { ArrowLeft, Download, FileCode, Clock, BookOpen, FileText, Sparkles, Share2, Check, Copy } from 'lucide-react';
 
 interface PostDetailProps {
   post: BlogPost;
@@ -9,6 +9,7 @@ interface PostDetailProps {
 
 const PostDetail: React.FC<PostDetailProps> = ({ post, onBack }) => {
   const [showSrt, setShowSrt] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
 
   const downloadSrt = () => {
     const blob = new Blob([post.originalSrt], { type: 'text/plain' });
@@ -22,27 +23,68 @@ const PostDetail: React.FC<PostDetailProps> = ({ post, onBack }) => {
     URL.revokeObjectURL(url);
   };
 
-  // Calculate read time roughly (200 words per minute)
+  const handleShare = async () => {
+    const shareData = {
+      title: post.title,
+      text: post.summary,
+      url: window.location.href,
+    };
+
+    if (navigator.share && navigator.canShare(shareData)) {
+      try {
+        await navigator.share(shareData);
+      } catch (err) {
+        console.error("Error sharing:", err);
+      }
+    } else {
+      // Fallback to clipboard
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000);
+      } catch (err) {
+        console.error("Failed to copy link:", err);
+      }
+    }
+  };
+
   const wordCount = post.content.replace(/<[^>]*>/g, '').split(/\s+/).length;
   const readTime = Math.ceil(wordCount / 200);
 
   return (
     <div className="animate-fadeIn pb-32 max-w-4xl mx-auto">
       {/* Top Navigation Row */}
-      <nav className="mb-12 flex items-center justify-between">
+      <nav className="mb-12 flex items-center justify-between px-2">
         <button 
           onClick={onBack}
-          className="group inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-primary transition-all"
+          className="group inline-flex items-center gap-3 text-sm font-semibold text-slate-500 hover:text-primary transition-all"
         >
-          <div className="p-2 rounded-full bg-white shadow-sm group-hover:bg-primary/5 transition-colors border border-slate-100">
+          <div className="p-2.5 rounded-full bg-white shadow-sm group-hover:bg-primary/5 transition-colors border border-slate-100">
             <ArrowLeft className="w-4 h-4" />
           </div>
           Back to Dashboard
         </button>
         
-        <div className="flex items-center gap-3">
-           <button className="p-2 rounded-full bg-white border border-slate-100 text-slate-400 hover:text-primary hover:border-primary/20 transition-all shadow-sm">
-              <Share2 className="w-4 h-4" />
+        <div className="flex items-center gap-3 relative">
+           <button 
+             onClick={handleShare}
+             className={`flex items-center gap-2 px-5 py-2.5 rounded-full border transition-all shadow-sm font-bold text-sm
+               ${isCopied 
+                 ? 'bg-green-50 border-green-200 text-green-600' 
+                 : 'bg-white border-slate-100 text-slate-600 hover:text-primary hover:border-primary/20 hover:bg-slate-50'
+               }`}
+           >
+              {isCopied ? (
+                <>
+                  <Check className="w-4 h-4 animate-popIn" />
+                  Link Copied!
+                </>
+              ) : (
+                <>
+                  <Share2 className="w-4 h-4" />
+                  Share Post
+                </>
+              )}
            </button>
         </div>
       </nav>
@@ -52,7 +94,6 @@ const PostDetail: React.FC<PostDetailProps> = ({ post, onBack }) => {
         
         {/* Elegant Header Area */}
         <header className="relative pt-16 pb-12 px-8 md:px-20 text-center border-b border-slate-50">
-          {/* Decorative element */}
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-1.5 bg-primary rounded-b-full shadow-[0_0_15px_rgba(37,99,235,0.3)]"></div>
           
           <div className="flex items-center justify-center gap-3 text-xs font-bold tracking-[0.2em] text-primary uppercase mb-8">

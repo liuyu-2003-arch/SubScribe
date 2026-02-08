@@ -3,7 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SRT to Blog</title>
+    <title>SubScribe | SRT to Blog Converter</title>
+    <meta name="description" content="Transform your video subtitles into beautiful, structured blog posts using AI." />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="SubScribe - SRT to Blog Converter" />
+    <meta property="og:description" content="Transform your video subtitles into beautiful, structured blog posts using AI." />
+    <meta property="og:image" content="https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&q=80&w=1200" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:title" content="SubScribe - SRT to Blog Converter" />
+    <meta property="twitter:description" content="Transform your video subtitles into beautiful, structured blog posts using AI." />
+
     <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Merriweather:ital,wght@0,300;0,400;0,700;0,900;1,300&display=swap" rel="stylesheet">
     <script>
@@ -20,11 +33,16 @@
             },
             animation: {
               fadeIn: 'fadeIn 0.5s ease-out forwards',
+              popIn: 'popIn 0.2s ease-out forwards',
             },
             keyframes: {
               fadeIn: {
                 '0%': { opacity: '0', transform: 'translateY(10px)' },
                 '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              popIn: {
+                '0%': { opacity: '0', transform: 'scale(0.95)' },
+                '100%': { opacity: '1', transform: 'scale(1)' },
               }
             }
           }
@@ -35,8 +53,8 @@
       body {
         background-color: #f8fafc;
         scroll-behavior: smooth;
+        -webkit-font-smoothing: antialiased;
       }
-      /* Custom scrollbar for raw srt view */
       .custom-scrollbar::-webkit-scrollbar {
         width: 8px;
       }
@@ -50,23 +68,22 @@
       .custom-scrollbar::-webkit-scrollbar-thumb:hover {
         background: rgba(148, 163, 184, 0.8);
       }
-      /* Ensure typography plugin respects serif font for body text */
       .prose p {
         font-family: 'Merriweather', serif;
       }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react/": "https://esm.sh/react@^19.2.4/",
-    "react": "https://esm.sh/react@^19.2.4",
-    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
-    "@google/genai": "https://esm.sh/@google/genai@^1.40.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.4/"
-  }
-}
-</script>
-</head>
+    <script type="importmap">
+    {
+      "imports": {
+        "react/": "https://esm.sh/react@^19.2.4/",
+        "react": "https://esm.sh/react@^19.2.4",
+        "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+        "@google/genai": "https://esm.sh/@google/genai@^1.40.0",
+        "react-dom/": "https://esm.sh/react-dom@^19.2.4/"
+      }
+    }
+    </script>
+  </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
